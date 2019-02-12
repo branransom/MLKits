@@ -15,11 +15,11 @@ class LogisticRegression {
       decisionBoundary: 0.5
     }, options);
 
-    this.weights = tf.zeros([this.features.shape[1], 1]);
+    this.weights = tf.zeros([this.features.shape[1], this.labels.shape[1]]);
   }
 
   gradientDescent(features, labels) {
-    const currentGuesses = features.matMul(this.weights).sigmoid();
+    const currentGuesses = features.matMul(this.weights).softmax();
     const differences = currentGuesses.sub(labels);
 
     const slopes = features
@@ -59,16 +59,15 @@ class LogisticRegression {
   predict(observations) {
     return this.processFeatures(observations)
       .matMul(this.weights)
-      .sigmoid() // marginal probability distribution
-      .greater(this.options.decisionBoundary)
-      .cast('float32');
+      .softmax() // conditional probability distribution
+      .argMax(1);
   }
 
   test(testFeatures, testLabels) {
     const predictions = this.predict(testFeatures);
-    testLabels = tf.tensor(testLabels);
+    testLabels = tf.tensor(testLabels).argMax(1);
 
-    const incorrect = predictions.sub(testLabels).abs().sum().get();
+    const incorrect = predictions.notEqual(testLabels).sum().get();
 
     return (predictions.shape[0] - incorrect) / predictions.shape[0];
   }
@@ -93,10 +92,12 @@ class LogisticRegression {
       variance
     } = tf.moments(features, 0);
 
-    this.mean = mean;
-    this.variance = variance;
+    const filler = variance.cast('bool').logicalNot().cast('float32'); // weak spot!! this is a workaround to avoid NaN when dividing by 0
 
-    return features.sub(mean).div(variance.pow(0.5));
+    this.mean = mean;
+    this.variance = variance.add(filler);
+
+    return features.sub(mean).div(this.variance.pow(0.5));
   }
 
   recordCost() {
